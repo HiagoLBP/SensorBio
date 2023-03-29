@@ -11,7 +11,7 @@ const corpoTabela = document.getElementById('corpo-tabela');
 var sensorStatusRef = firebase.database().ref('sensor_status');
 var janela = document.getElementById("janela");
 var currentRow;
-let horariosPrimeiraEntrada = {};
+
 
 //Escute mudanças no nó sensor_status
 sensorStatusRef.on('value', function(snapshot) {
@@ -75,15 +75,11 @@ nomesRef.on('value', (snapshot) => {
     nomeCelula.innerText = nome;
     nomeCelula.classList.add('nome');
 
-    const entradaCelula = document.createElement('td');
-    entradaCelula.innerText = '';
-    entradaCelula.classList.add('entrada');
-
     novaLinha.appendChild(nomeCelula);
-    novaLinha.appendChild(entradaCelula);
 
     corpoTabela.appendChild(novaLinha);
   });
+  
 });
 
 logsRef.on('child_changed', (snapshot) => {
@@ -97,37 +93,41 @@ logsRef.on('child_changed', (snapshot) => {
 
   if (linha) {
     // Obtém o nome e a mensagem da pessoa
-    const [nome, mensagem] = logData[Object.keys(logData)[0]].split(" - ");
+    const [nome] = logData[Object.keys(logData)[0]];
 
     // Atualiza as células da linha correspondente na tabela
     linha.querySelector('.nome').innerText = nome;
-    linha.querySelector('.entrada').innerText = mensagem;
   }
 });
 
 function adicionarEntrada(id, nome, mensagem) {
-  let horaAtual;
-  if (horariosPrimeiraEntrada[id]) {
-    horaAtual = horariosPrimeiraEntrada[id];
-  } else if (nomes[id] && nomes[id].hora) {
-    horaAtual = nomes[id].hora;
-  } else {
-    horaAtual = new Date();
-  }
   const chave = logsRef.push().key;
   logsRef.child(chave).set({
-    dataHora: horaAtual.getTime(),
     id: id,
     nome: nome,
     mensagem: mensagem,
   });
-  // Cria um novo registro no Firebase com o nome e a mensagem
-  logsRef.child(`log_${id}`).set({
-    [new Date().getTime()]: `${nome} - ${mensagem}`,
+
+
+  // Recupera o último registro do nó "logs" correspondente ao usuário atual
+  logsRef.child(`log_${id}`).orderByKey().limitToLast(1).once('value', (snapshot) => {
+    snapshot.forEach((childSnapshot) => {
+      const logData = childSnapshot.val();
+
+      // Obtém a mensagem do registro e atualiza a célula correspondente na tabela
+      const novaEntrada = document.createElement('td');
+      novaEntrada.innerText = logData;
+      novaEntrada.classList.add('entrada');
+
+      // Obtém a linha correspondente na tabela e adiciona a nova célula
+      const linha = document.querySelector(`tr[data-id="${id}"]`);
+      linha.appendChild(novaEntrada);
+
+    });
   });
-  horariosPrimeiraEntrada[id] = horaAtual;
-  nomes[id] = { nome, hora: horaAtual };
+  
 }
+
 
 // Adiciona um listener para atualizar a tabela inteira sempre que houver alterações no Firebase
 logsRef.on('value', (snapshot) => {
@@ -145,24 +145,40 @@ logsRef.on('value', (snapshot) => {
     // Cria uma nova linha na tabela com o nome e a mensagem
     const novaLinha = document.createElement('tr');
     novaLinha.setAttribute('data-id', id);
+
     const nomeCelula = document.createElement('td');
-    nomeCelula.innerText = nome;
+    nomeCelula.innerText = nome +' - '+ mensagem;
     nomeCelula.classList.add('nome');
 
-    const entradaCelula = document.createElement('td');
-    entradaCelula.innerText = mensagem;
-    entradaCelula.classList.add('entrada');
 
     novaLinha.appendChild(nomeCelula);
-    novaLinha.appendChild(entradaCelula);
+    
 
     corpoTabela.appendChild(novaLinha);
 
-const hora = new Date().toLocaleDateString('pt-BR', {day: '2-digit', month:'2-digit', year:'2-digit'});
-const horarioCelula = document.createElement('td');
-horarioCelula.innerText = hora;
-horarioCelula.classList.add('Data');
-
-novaLinha.appendChild(horarioCelula);
   });
 }); 
+
+function getDataAtual() {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+}
+
+let dataAtual = getDataAtual(); // Armazena a data atual
+
+// Escuta mudanças no nó logs
+logsRef.on('child_added', function(snapshot) {
+  const log = snapshot.val();
+  if (log.id_) {
+    // Cria uma nova linha na tabela
+    const newRow = document.createElement("tr");
+    const tdEntrada = document.createElement("td");
+    tdEntrada.innerText = log.entrada;
+    const tdData = document.createElement("td");
+    tdData.innerText = log.data;
+    newRow.appendChild(tdEntrada);
+    newRow.appendChild(tdData);
+    corpoTabela.appendChild(newRow);
+  }
+});
+
